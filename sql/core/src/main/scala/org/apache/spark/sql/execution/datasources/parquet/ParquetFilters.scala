@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.execution.datasources.parquet
 
-import java.lang.{Boolean => JBoolean, Double => JDouble, Float => JFloat, Long => JLong}
+import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal}
 import java.sql.{Date, Timestamp}
 import java.time.{Instant, LocalDate}
@@ -594,7 +594,13 @@ class ParquetFilters(
   private def valueCanMakeFilterOn(name: String, value: Any): Boolean = {
     value == null || (nameToParquetField(name).fieldType match {
       case ParquetBooleanType => value.isInstanceOf[JBoolean]
-      case ParquetByteType | ParquetShortType | ParquetIntegerType => value.isInstanceOf[Number]
+      case ParquetByteType | ParquetShortType | ParquetIntegerType => value match {
+        // Byte/Short/Int are all stored as INT32 in Parquet so filters are built using type Int.
+        // We don't create a filter if the value would overflow.
+        case _: JByte | _: JShort | _: Integer => true
+        case v: JLong => v.longValue() >= Int.MinValue && v.longValue() <= Int.MaxValue
+        case _ => false
+      }
       case ParquetLongType => value.isInstanceOf[JLong]
       case ParquetFloatType => value.isInstanceOf[JFloat]
       case ParquetDoubleType => value.isInstanceOf[JDouble]
